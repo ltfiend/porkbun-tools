@@ -7,16 +7,13 @@ import dns.resolver
 from pathlib import Path
 
 ZONE_TEMPLATE = """
-zone \"{domain}\" IN {{
-    type master;
+zone \"{domain}\" IN {
+    type primary;
     file \"zones/db.{domain}\";
-    allow-transfer {{ any; }};
-    allow-update {{ none; }};
-    notify yes;
-}};
+};
 """
 
-CONFIG_FILE = "porkbun-ns-maint.json"
+CONFIG_FILE = "config.json"
 ZONE_DIR = Path("zones")
 NAMED_CONF_OUTPUT = Path("zone_config") / "{domain}.conf"
 API_BASE_URL = "https://api.porkbun.com/api/json/v3"
@@ -121,20 +118,22 @@ def create_zone_files(domain, config):
     else:
         print(f"ℹ️ Zone file already exists: {zone_file}")
 
-    named_conf_file.write_text(ZONE_TEMPLATE.format(domain=domain))
-    print(f"✅ Created named.conf fragment: {named_conf_file}")
+    # med_conf_file.write_text(ZONE_TEMPLATE.format(domain=domain))
+    # int(f"✅ Created named.conf fragment: {named_conf_file}")
 
     rndc_conf_path = config.get("rndc_conf")
     if not rndc_conf_path:
         print("❌ Missing 'rndc_conf' in config.json")
         sys.exit(1)
 
+    zone_extras = config.get("zone_config_block")
+
     rndc_command = [
         "rndc",
         f"-c{rndc_conf_path}",
         "addzone",
         domain,
-        f'{{ type master; file "db.{domain}"; allow-transfer {{ any; }}; allow-update {{ none; }}; notify yes; }};',
+        f'{{ type primary; file "db.{domain}"; {zone_extras} }};',
     ]
 
     proceed_to_porkbun = True
@@ -150,12 +149,52 @@ def create_zone_files(domain, config):
         )
         proceed_to_porkbun = response == "y"
 
+        if config.get("catalog_zone"):
+            add_catalog_zone_entry(domain, config)
+
     if proceed_to_porkbun:
         dns_server = config.get("dns_server")
         if dns_server and confirm_zone_exists(domain, dns_server):
             update_porkbun_nameservers(domain, config)
         else:
             print("⚠️ Skipping Porkbun update due to DNS verification failure")
+
+
+def add_catalog_zone_entry(domain, config):
+    import dns.tsigkeyring
+    import dns.update
+    import dns.query
+    import hashlib
+
+    catalog_zone = config.get("catalog_zone")
+    key_path = config.get("catalog_update_key")
+    catalog_server = config.get("catalog_server")
+
+    if not catalog_zone or not key_path or not catalog_server:
+        print("⚠️ Missing catalog zone configuration in config.json")
+        return
+    else:
+        catalog_key_name = config.get("catalog_update_keyname")
+        catalog_key = config.get("catalog_update_key")
+
+    try:
+        keyring = dns.tsigkeyring.from_text({catalog_key_name: catalog_key})
+        zone_hash = hashlib.sha1(domain.encode()).hexdigest()
+        node = f"{zone_hash}.zones.{catalog_zone}."
+
+        update = dns.update.UpdateMessage(catalog_zone, keyring=keyring)
+        update.add(node, 3600, "PTR", domain + ".")
+        response = dns.query.tcp(update, catalog_server)
+
+        if response.rcode() == 0:
+            print(f"✅ Successfully added {domain} to catalog zone {catalog_zone}")
+        else:
+            print(
+                f"❌ Failed to update catalog zone: {dns.rcode.to_text(response.rcode())}"
+            )
+
+    except Exception as e:
+        print(f"❌ Error sending catalog zone nsupdate: {e}")
 
 
 def main():

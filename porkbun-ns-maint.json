@@ -7,5 +7,10 @@
     "ns1.example.tv",
     "ns2.example.tv",
     "ns3.example.tv"
-  ]
+  ],
+  "zone_config_block": "notify yes;",
+  "catalog_zone": "catalog.example",
+  "catalog_server": "192.168.1.1",
+  "catalog_update_keyname": "cat-updates",
+  "catalog_update_key": "updatekey"
 }
