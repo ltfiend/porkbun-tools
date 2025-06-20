@@ -1,0 +1,11 @@
+{
+  "api_key": "<APIKEY>",
+  "secret_api_key": "<SECRET>",
+  "rndc_conf": "/etc/bind/rndc.conf",
+  "dns_server": "192.168.1.1",
+  "name_servers": [
+    "ns1.example.tv",
+    "ns2.example.tv",
+    "ns3.example.tv"
+  ]
+}
