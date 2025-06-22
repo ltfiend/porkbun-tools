@@ -6,14 +6,7 @@ import requests
 import dns.resolver
 from pathlib import Path
 
-ZONE_TEMPLATE = """
-zone \"{domain}\" IN {
-    type primary;
-    file \"zones/db.{domain}\";
-};
-"""
-
-CONFIG_FILE = "config.json"
+CONFIG_FILE = "porkbun-ns-maint.json"
 ZONE_DIR = Path("zones")
 NAMED_CONF_OUTPUT = Path("zone_config") / "{domain}.conf"
 API_BASE_URL = "https://api.porkbun.com/api/json/v3"
@@ -86,12 +79,29 @@ def update_porkbun_nameservers(domain, config):
         print(f"🔍 Raw response was: {response.text}")
 
 
-# The rest of the code remains unchanged
+def load_zone_template(domain, config):
+    import string
+
+    template_path = config.get("zone_template")
+    if not template_path:
+        print("❌ No global zone template found in config.json under 'zone_template'")
+        sys.exit(1)
+
+    try:
+        with open(template_path, "r") as f:
+            template = string.Template(f.read())
+            return template.safe_substitute(domain=domain)
+    except Exception as e:
+        print(f"❌ Failed to read zone template file {template_path}: {e}")
+        sys.exit(1)
+    except Exception as e:
+        print(f"❌ Failed to read zone template file {template_path}: {e}")
+        sys.exit(1)
 
 
 def create_zone_files(domain, config):
     ZONE_DIR.mkdir(parents=True, exist_ok=True)
-    (Path("zone_config")).mkdir(parents=True, exist_ok=True)
+    Path("zone_config").mkdir(parents=True, exist_ok=True)
 
     zone_file = ZONE_DIR / f"db.{domain}"
     named_conf_file = NAMED_CONF_OUTPUT.with_name(f"{domain}.conf")
@@ -118,28 +128,32 @@ def create_zone_files(domain, config):
     else:
         print(f"ℹ️ Zone file already exists: {zone_file}")
 
-    # med_conf_file.write_text(ZONE_TEMPLATE.format(domain=domain))
-    # int(f"✅ Created named.conf fragment: {named_conf_file}")
-
     rndc_conf_path = config.get("rndc_conf")
     if not rndc_conf_path:
         print("❌ Missing 'rndc_conf' in config.json")
         sys.exit(1)
 
-    zone_extras = config.get("zone_config_block")
+    zone_config_block = load_zone_template(domain, config)
+
+    base_block = f'type primary; file "db.{domain}";'
+    full_block = (
+        f"{base_block}\n{zone_config_block}" if zone_config_block else base_block
+    )
 
     rndc_command = [
         "rndc",
         f"-c{rndc_conf_path}",
         "addzone",
         domain,
-        f'{{ type primary; file "db.{domain}"; {zone_extras} }};',
+        f"{{ {full_block} }};",
     ]
 
     proceed_to_porkbun = True
     try:
         subprocess.run(rndc_command, check=True)
         print("✅ rndc addzone executed successfully")
+        if config.get("catalog_zone"):
+            add_catalog_zone_entry(domain, config)
     except subprocess.CalledProcessError as e:
         print(f"❌ rndc command failed: {e}")
         response = (
@@ -148,9 +162,6 @@ def create_zone_files(domain, config):
             .lower()
         )
         proceed_to_porkbun = response == "y"
-
-        if config.get("catalog_zone"):
-            add_catalog_zone_entry(domain, config)
 
     if proceed_to_porkbun:
         dns_server = config.get("dns_server")

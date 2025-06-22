@@ -1,6 +1,6 @@
 {
-  "api_key": "<APIKEY>",
-  "secret_api_key": "<SECRET>",
+  "api_key": "<apikey>",
+  "secret_api_key": "<secretkey>",
   "rndc_conf": "/etc/bind/rndc.conf",
   "dns_server": "192.168.1.1",
   "name_servers": [
@@ -8,9 +8,9 @@
     "ns2.example.tv",
     "ns3.example.tv"
   ],
-  "zone_config_block": "notify yes;",
+  "zone_template": "porkbun-ns-maint.template",
   "catalog_zone": "catalog.example",
   "catalog_server": "192.168.1.1",
-  "catalog_update_keyname": "cat-updates",
-  "catalog_update_key": "updatekey"
+  "catalog_update_keyname": "<keyname>",
+  "catalog_update_key": "<updatekey>"
 }

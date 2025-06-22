@@ -1,0 +1,15 @@
+inline-signing yes;
+auto-dnssec maintain;
+key-directory "/var/named/keys/{domain}";
+update-policy { 
+	grant "dev-home-iodyn-512" zonesub "ANY"; 
+	grant "dev-home-iodyn" zonesub "ANY"; 
+	grant "dev-home-md5" zonesub "ANY"; 
+};
+allow-transfer  { 
+	key "tcs-tsig-transfer"; 
+	key "tcs-tsig-transfer-512"; 
+	192.168.90.0/24; 
+	127.0.0.1/32; 
+}; 
+
