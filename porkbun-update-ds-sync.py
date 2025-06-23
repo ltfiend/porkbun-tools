@@ -3,6 +3,16 @@ import dns.query, dns.message, dns.rdatatype, dns.name, dns.dnssec, dns.rdata
 import requests
 import logging
 import syslog
+import argparse
+
+# ------------------------
+# CLI Args
+# ------------------------
+parser = argparse.ArgumentParser(
+    description="Sync DS records for a given domain via Porkbun API"
+)
+parser.add_argument("domain", help="The domain name to synchronize (e.g. example.com)")
+args = parser.parse_args()
 
 
 # ------------------------
@@ -120,7 +130,7 @@ def main():
     syslog.openlog("dnssec-sync", syslog.LOG_PID, syslog.LOG_DAEMON)
 
     cfg = load_config()
-    domain = cfg["domain"]
+    domain = args.domain
     server = cfg["local_dns_server"]
     ak, sk = cfg["porkbun_api_key"], cfg["porkbun_api_secret"]
     dt = cfg.get("digest_type", 2)
