@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
 """
-Script to list Porkbun domains, nameservers, DS and DNSKEY records,
-including KSK-to-DS matching alerts for mismatches.
+Script to list Porkbun domains and produce a summary table of:
+  - Nameservers
+  - DS Key IDs
+  - DNSKEY Key IDs (KSK vs ZSK)
+  - Sync Status (✓ in sync, ✗ out of sync, blank if no records)
+Includes a progress counter to show domains processed in real-time.
 """
 
 import argparse
@@ -11,19 +15,18 @@ import dns.resolver
 import dns.dnssec
 import socket
 import base64
+import sys
 
 # Base API URL
 BASE_URL = "https://api.porkbun.com/api/json/v3"
 
 
 def load_config(path):
-    """Load API keys from config file."""
     with open(path) as f:
         return json.load(f)
 
 
 def list_domains(apikey, secretapikey, start=0):
-    """Retrieve domains via domain/listAll endpoint."""
     url = f"{BASE_URL}/domain/listAll"
     payload = {
         "apikey": apikey,
@@ -39,7 +42,6 @@ def list_domains(apikey, secretapikey, start=0):
 
 
 def get_nameservers(apikey, secretapikey, domain):
-    """Retrieve NS via domain/getNs endpoint."""
     url = f"{BASE_URL}/domain/getNs/{domain}"
     payload = {"apikey": apikey, "secretapikey": secretapikey}
     resp = requests.post(url, json=payload)
@@ -50,18 +52,17 @@ def get_nameservers(apikey, secretapikey, domain):
 
 
 def get_ds_records(apikey, secretapikey, domain):
-    """Retrieve DS records via Porkbun API."""
     url = f"{BASE_URL}/dns/getDnssecRecords/{domain}"
     payload = {"apikey": apikey, "secretapikey": secretapikey}
     resp = requests.post(url, json=payload)
     data = resp.json()
     if data.get("status") != "SUCCESS":
         raise RuntimeError(f"Error getting DS for {domain}: {data.get('message')}")
-    return data.get("records", {})  # dict keyed by keyTag
+    records = data.get("records")
+    return records if isinstance(records, dict) else {}
 
 
 def query_dnskey(domain, ns_list):
-    """Query DNSKEY records, compute keyTag and return structured list."""
     resolver = dns.resolver.Resolver(configure=False)
     ips = []
     for ns in ns_list:
@@ -85,13 +86,13 @@ def query_dnskey(domain, ns_list):
                 }
             )
         return records
-    except Exception as e:
-        return [{"error": str(e)}]
+    except Exception:
+        return []
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description="List domains, NS, DS and DNSKEY records from Porkbun"
+        description="Summary table of NS/DS/DNSKEY sync status with progress counter"
     )
     parser.add_argument(
         "-c", "--config", default="config.json", help="Path to config file"
@@ -100,76 +101,70 @@ def main():
 
     cfg = load_config(args.config)
     apikey = cfg.get("api_key")
-    secretapikey = cfg.get("secret_api_key")
+    secret = cfg.get("secret_api_key")
 
+    rows = []
+    count = 0
     start = 0
     while True:
-        domains = list_domains(apikey, secretapikey, start=start)
+        domains = list_domains(apikey, secret, start=start)
         if not domains:
             break
         for entry in domains:
-            domain = entry.get("domain")
-            print(f"Domain: {domain}")
+            count += 1
+            # Progress counter
+            print(f"Processed {count} domains...", file=sys.stderr)
 
+            domain = entry.get("domain")
             # Nameservers
             try:
-                ns_list = get_nameservers(apikey, secretapikey, domain)
-                print("  Nameservers:")
-                for ns in ns_list:
-                    print(f"    {ns}")
-            except Exception as e:
-                print(f"  Error retrieving NS: {e}")
-                ns_list = []
+                ns = get_nameservers(apikey, secret, domain)
+            except Exception:
+                ns = []
+            ns_str = ",".join(ns) if ns else ""
 
-            # DS Records
-            print("  DS Records:")
+            # DS Key IDs
             try:
-                ds_records = get_ds_records(apikey, secretapikey, domain)
-                if ds_records:
-                    for rec in ds_records.values():
-                        print(
-                            f"    keyTag: {rec.get('keyTag')} alg: {rec.get('alg')} digestType: {rec.get('digestType')} digest: {rec.get('digest')}"
-                        )
-                else:
-                    print("    None")
-            except Exception as e:
-                print(f"    Error retrieving DS: {e}")
-                ds_records = {}
+                ds = get_ds_records(apikey, secret, domain) or {}
+            except Exception:
+                ds = {}
+            ds_ids = sorted(int(r.get("keyTag")) for r in ds.values()) if ds else []
+            ds_str = ",".join(str(i) for i in ds_ids) if ds_ids else ""
 
-            # DNSKEY Records
-            print("  DNSKEY Records:")
-            dnskey_list = query_dnskey(domain, ns_list)
-            for rec in dnskey_list:
-                if "error" in rec:
-                    print(f"    Error: {rec['error']}")
-                else:
-                    print(
-                        f"    keyTag: {rec['keyTag']} flags: {rec['flags']} alg: {rec['algorithm']} key: {rec['key']}"
-                    )
+            # DNSKEY Key IDs
+            dnskeys = query_dnskey(domain, ns)
+            ksk_ids = sorted(r["keyTag"] for r in dnskeys if r.get("flags") == 257)
+            zsk_ids = sorted(r["keyTag"] for r in dnskeys if r.get("flags") != 257)
+            parts = []
+            if ksk_ids:
+                parts.append("KSK:" + ",".join(str(i) for i in ksk_ids))
+            if zsk_ids:
+                parts.append("ZSK:" + ",".join(str(i) for i in zsk_ids))
+            dnskey_str = ";".join(parts)
 
-            # KSK-to-DS matching (flags==257)
-            print("  KSK-to-DS Match Results:")
-            ksk_tags = {rec["keyTag"] for rec in dnskey_list if rec.get("flags") == 257}
-            ds_tags = (
-                {int(rec.get("keyTag")) for rec in ds_records.values()}
-                if ds_records
-                else set()
-            )
+            # Status
+            if not dnskeys and not ds_ids:
+                status = ""
+            else:
+                ksk_set = set(ksk_ids)
+                ds_set = set(ds_ids)
+                status = "✓" if ksk_set == ds_set else "✗"
 
-            # Check each KSK
-            for tag in ksk_tags:
-                if tag in ds_tags:
-                    print(f"    keyTag {tag}: matches DS record")
-                else:
-                    print(f"    keyTag {tag}: MISSING DS record!")
-
-            # Check each DS for missing KSK
-            for tag in ds_tags:
-                if tag not in ksk_tags:
-                    print(f"    DS keyTag {tag}: NO matching DNSKEY KSK!")
-
-            print()
+            rows.append((domain, ns_str, ds_str, dnskey_str, status))
         start += len(domains)
+
+    # Print table
+    headers = ("Domain", "Nameservers", "DS Key IDs", "DNSKEY Key IDs", "Status")
+    col_widths = [len(h) for h in headers]
+    for row in rows:
+        for i, cell in enumerate(row):
+            col_widths[i] = max(col_widths[i], len(cell))
+
+    fmt = "  ".join(f"{{:{w}}}" for w in col_widths)
+    print(fmt.format(*headers))
+    print("  ".join("-" * w for w in col_widths))
+    for row in rows:
+        print(fmt.format(*row))
 
 
 if __name__ == "__main__":
