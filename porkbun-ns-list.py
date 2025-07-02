@@ -97,6 +97,7 @@ def main():
     parser.add_argument(
         "-c", "--config", default="config.json", help="Path to config file"
     )
+    parser.add_argument("-d", "--domain", help="work on this domain")
     args = parser.parse_args()
 
     cfg = load_config(args.config)
@@ -106,52 +107,52 @@ def main():
     rows = []
     count = 0
     start = 0
-    while True:
+    if args.domain:
+        domains = [{"domain": args.domain}]
+    else:
         domains = list_domains(apikey, secret, start=start)
-        if not domains:
-            break
-        for entry in domains:
-            count += 1
-            # Progress counter
-            print(f"Processed {count} domains...", file=sys.stderr)
+    for entry in domains:
+        count += 1
+        # Progress counter
+        print(f"Processed {count} domains...", file=sys.stderr)
 
-            domain = entry.get("domain")
-            # Nameservers
-            try:
-                ns = get_nameservers(apikey, secret, domain)
-            except Exception:
-                ns = []
-            ns_str = ",".join(ns) if ns else ""
+        domain = entry.get("domain")
+        # Nameservers
+        try:
+            ns = get_nameservers(apikey, secret, domain)
+        except Exception:
+            ns = []
+        ns_str = ",".join(ns) if ns else ""
 
-            # DS Key IDs
-            try:
-                ds = get_ds_records(apikey, secret, domain) or {}
-            except Exception:
-                ds = {}
-            ds_ids = sorted(int(r.get("keyTag")) for r in ds.values()) if ds else []
-            ds_str = ",".join(str(i) for i in ds_ids) if ds_ids else ""
+        # DS Key IDs
+        try:
+            ds = get_ds_records(apikey, secret, domain) or {}
+        except Exception:
+            ds = {}
+        ds_ids = sorted(int(r.get("keyTag")) for r in ds.values()) if ds else []
+        ds_str = ",".join(str(i) for i in ds_ids) if ds_ids else ""
 
-            # DNSKEY Key IDs
-            dnskeys = query_dnskey(domain, ns)
-            ksk_ids = sorted(r["keyTag"] for r in dnskeys if r.get("flags") == 257)
-            zsk_ids = sorted(r["keyTag"] for r in dnskeys if r.get("flags") != 257)
-            parts = []
-            if ksk_ids:
-                parts.append("KSK:" + ",".join(str(i) for i in ksk_ids))
-            if zsk_ids:
-                parts.append("ZSK:" + ",".join(str(i) for i in zsk_ids))
-            dnskey_str = ";".join(parts)
+        # DNSKEY Key IDs
+        dnskeys = query_dnskey(domain, ns)
+        ksk_ids = sorted(r["keyTag"] for r in dnskeys if r.get("flags") == 257)
+        zsk_ids = sorted(r["keyTag"] for r in dnskeys if r.get("flags") != 257)
+        parts = []
+        if ksk_ids:
+            parts.append("KSK:" + ",".join(str(i) for i in ksk_ids))
+        if zsk_ids:
+            parts.append("ZSK:" + ",".join(str(i) for i in zsk_ids))
+        dnskey_str = ";".join(parts)
 
-            # Status
-            if not dnskeys and not ds_ids:
-                status = ""
-            else:
-                ksk_set = set(ksk_ids)
-                ds_set = set(ds_ids)
-                status = "✓" if ksk_set == ds_set else "✗"
+        # Status
+        if not dnskeys and not ds_ids:
+            status = ""
+        else:
+            ksk_set = set(ksk_ids)
+            ds_set = set(ds_ids)
+            status = "✓" if ksk_set == ds_set else "✗"
 
-            rows.append((domain, ns_str, ds_str, dnskey_str, status))
-        start += len(domains)
+        rows.append((domain, ns_str, ds_str, dnskey_str, status))
+    start += len(domains)
 
     # Print table
     headers = ("Domain", "Nameservers", "DS Key IDs", "DNSKEY Key IDs", "Status")
@@ -169,4 +170,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
