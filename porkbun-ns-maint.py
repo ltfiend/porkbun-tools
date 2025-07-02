@@ -85,7 +85,9 @@ def load_zone_template(domain, config):
 
     template_path = config.get("zone_template")
     if not template_path:
-        print("❌ No global zone template found in config.json under 'zone_template'")
+        print(
+            f"❌ No global zone template found in {args.config} under 'zone_template'"
+        )
         sys.exit(1)
 
     try:
@@ -131,7 +133,7 @@ def create_zone_files(domain, config):
 
     rndc_conf_path = config.get("rndc_conf")
     if not rndc_conf_path:
-        print("❌ Missing 'rndc_conf' in config.json")
+        print(f"❌ Missing 'rndc_conf' in {args.config}")
         sys.exit(1)
 
     zone_config_block = load_zone_template(domain, config)
@@ -183,7 +185,7 @@ def add_catalog_zone_entry(domain, config):
     catalog_server = config.get("catalog_server")
 
     if not catalog_zone or not key_path or not catalog_server:
-        print("⚠️ Missing catalog zone configuration in config.json")
+        print(f"⚠️ Missing catalog zone configuration in {args.config}")
         return
     else:
         catalog_key_name = config.get("catalog_update_keyname")
