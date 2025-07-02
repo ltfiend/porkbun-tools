@@ -4,6 +4,7 @@ import json
 import subprocess
 import requests
 import dns.resolver
+import argparse
 from pathlib import Path
 
 CONFIG_FILE = "porkbun-ns-maint.json"
@@ -12,9 +13,9 @@ NAMED_CONF_OUTPUT = Path("zone_config") / "{domain}.conf"
 API_BASE_URL = "https://api.porkbun.com/api/json/v3"
 
 
-def load_config():
+def load_config(config_file):
     try:
-        with open(CONFIG_FILE, "r") as f:
+        with open(config_file, "r") as f:
             return json.load(f)
     except Exception as e:
         print(f"Error loading config: {e}")
@@ -209,12 +210,25 @@ def add_catalog_zone_entry(domain, config):
 
 
 def main():
-    if len(sys.argv) != 2:
-        print("Usage: python porkbun_dns_update.py <domain>")
-        sys.exit(1)
+    parser = argparse.ArgumentParser(description="NS Record Maintainer")
+    parser.add_argument(
+        "-c",
+        "--config",
+        dest="config",
+        metavar="FILE",
+        help="Path to an alternate configuration file",
+        default="porkbun-ns-maint.json",
+    )
+    parser.add_argument(
+        "-d",
+        "--domain",
+        dest="domain",
+        help="Domain name for maintenance",
+    )
+    args = parser.parse_args()
 
-    domain = sys.argv[1].strip().lower()
-    config = load_config()
+    domain = args.domain
+    config = load_config(args.config)
     create_zone_files(domain, config)
 
 
