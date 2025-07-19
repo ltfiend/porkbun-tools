@@ -14,9 +14,11 @@ import argparse
 # CLI Args
 # ------------------------
 parser = argparse.ArgumentParser(
-    description="Sync DS records for a given domain via Porkbun API"
+    description="Sync DS records for one or more domains via Porkbun API"
 )
-parser.add_argument("domain", help="The domain name to synchronize (e.g. example.com)")
+parser.add_argument(
+    "domains", nargs="+", help="Domain name(s) to synchronize (e.g. example.com)"
+)
 args = parser.parse_args()
 
 
@@ -131,50 +133,51 @@ def main():
     syslog.openlog("dnssec-sync", syslog.LOG_PID, syslog.LOG_DAEMON)
 
     cfg = load_config()
-    domain = args.domain
     server = cfg["dns_server"]
     ak = cfg["api_key"]
     sk = cfg["secret_api_key"]
     dt = cfg.get("digest_type", 2)
 
-    print(f"[+] Querying DNSKEY from {server} for {domain}...")
-    keys = get_dnskey(domain, server)
-    if not keys:
-        msg = "❌ No DNSKEY records found."
-        print(msg)
-        syslog.syslog(syslog.LOG_ERR, msg)
-        return
-
-    print("[+] Converting to DS (KSKs only)...")
-    ds_local = convert_dnskey(domain, keys, dt)
-    local_tuples = {ds_to_tuple(d) for d in ds_local}
-
-    print("[+] Fetching Porkbun DS records...")
-    pb_records = get_existing_ds_records(domain, ak, sk)
-    remote_tuples = {record_to_tuple(r): r["id"] for r in pb_records}
-
-    # ADD missing or confirm in sync
-    for ds in ds_local:
-        t = ds_to_tuple(ds)
-        if t not in remote_tuples:
-            msg = f"[+] Adding DS {t}"
+    for domain in args.domains:
+        print(f"Processing domain: {domain}")
+        print(f"[+] Querying DNSKEY from {server} for {domain}...")
+        keys = get_dnskey(domain, server)
+        if not keys:
+            msg = "❌ No DNSKEY records found."
             print(msg)
-            syslog.syslog(syslog.LOG_INFO, msg)
-            res = create_dnssec_record(domain, ak, sk, ds)
-            print(" →", res)
-        else:
-            msg = f"[=] DS {t} already in sync."
-            print(msg)
-            syslog.syslog(syslog.LOG_INFO, msg)
+            syslog.syslog(syslog.LOG_ERR, msg)
+            continue
 
-    # DELETE stale
-    for t, record_id in remote_tuples.items():
-        if t not in local_tuples:
-            msg = f"[-] Deleting stale DS {t}"
-            print(msg)
-            syslog.syslog(syslog.LOG_INFO, msg)
-            res = delete_ds_record(domain, ak, sk, record_id)
-            print(" →", res)
+        print("[+] Converting to DS (KSKs only)...")
+        ds_local = convert_dnskey(domain, keys, dt)
+        local_tuples = {ds_to_tuple(d) for d in ds_local}
+
+        print("[+] Fetching Porkbun DS records...")
+        pb_records = get_existing_ds_records(domain, ak, sk)
+        remote_tuples = {record_to_tuple(r): r["id"] for r in pb_records}
+
+        # ADD missing or confirm in sync
+        for ds in ds_local:
+            t = ds_to_tuple(ds)
+            if t not in remote_tuples:
+                msg = f"[+] Adding DS {t}"
+                print(msg)
+                syslog.syslog(syslog.LOG_INFO, msg)
+                res = create_dnssec_record(domain, ak, sk, ds)
+                print(" →", res)
+            else:
+                msg = f"[=] DS {t} already in sync."
+                print(msg)
+                syslog.syslog(syslog.LOG_INFO, msg)
+
+        # DELETE stale
+        for t, record_id in remote_tuples.items():
+            if t not in local_tuples:
+                msg = f"[-] Deleting stale DS {t}"
+                print(msg)
+                syslog.syslog(syslog.LOG_INFO, msg)
+                res = delete_ds_record(domain, ak, sk, record_id)
+                print(" →", res)
 
 
 if __name__ == "__main__":
