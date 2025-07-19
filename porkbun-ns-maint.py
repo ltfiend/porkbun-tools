@@ -7,7 +7,7 @@ import dns.resolver
 import argparse
 from pathlib import Path
 
-CONFIG_FILE = "porkbun-ns-maint.json"
+CONFIG_FILE = "porkbun-tools.json"
 ZONE_DIR = Path("zones")
 NAMED_CONF_OUTPUT = Path("zone_config") / "{domain}.conf"
 API_BASE_URL = "https://api.porkbun.com/api/json/v3"

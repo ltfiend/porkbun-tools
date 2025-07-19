@@ -1,5 +1,10 @@
-import yaml
-import dns.query, dns.message, dns.rdatatype, dns.name, dns.dnssec, dns.rdata
+import json
+import dns.query
+import dns.message
+import dns.rdatatype
+import dns.name
+import dns.dnssec
+import dns.rdata
 import requests
 import logging
 import syslog
@@ -18,9 +23,9 @@ args = parser.parse_args()
 # ------------------------
 # Configuration
 # ------------------------
-def load_config(path="porkbun-update-ds-sync.yaml"):
+def load_config(path="porkbun-tools.json"):
     with open(path) as f:
-        return yaml.safe_load(f)
+        return json.load(f)
 
 
 # ------------------------
@@ -58,12 +63,10 @@ def get_existing_ds_records(domain, api_key, api_secret):
     payload = {"apikey": api_key, "secretapikey": api_secret}
     r = requests.post(url, json=payload)
     data = r.json()
-
     if data.get("status") != "SUCCESS":
         print("❌ Error fetching DS records:", data)
         syslog.syslog(syslog.LOG_ERR, f"DNSSEC sync error: {data}")
         return []
-
     records_dict = data.get("records", {})
     if not isinstance(records_dict, dict):
         print("❌ Unexpected format for records:", records_dict)
@@ -71,12 +74,10 @@ def get_existing_ds_records(domain, api_key, api_secret):
             syslog.LOG_ERR, f"DNSSEC sync error: Unexpected format: {records_dict}"
         )
         return []
-
     records = []
     for record_id, record_data in records_dict.items():
         record_data["id"] = record_id
         records.append(record_data)
-
     return records
 
 
@@ -131,8 +132,9 @@ def main():
 
     cfg = load_config()
     domain = args.domain
-    server = cfg["local_dns_server"]
-    ak, sk = cfg["porkbun_api_key"], cfg["porkbun_api_secret"]
+    server = cfg["dns_server"]
+    ak = cfg["api_key"]
+    sk = cfg["secret_api_key"]
     dt = cfg.get("digest_type", 2)
 
     print(f"[+] Querying DNSKEY from {server} for {domain}...")
@@ -159,7 +161,7 @@ def main():
             print(msg)
             syslog.syslog(syslog.LOG_INFO, msg)
             res = create_dnssec_record(domain, ak, sk, ds)
-            print("    →", res)
+            print(" →", res)
         else:
             msg = f"[=] DS {t} already in sync."
             print(msg)
@@ -172,7 +174,7 @@ def main():
             print(msg)
             syslog.syslog(syslog.LOG_INFO, msg)
             res = delete_ds_record(domain, ak, sk, record_id)
-            print("    →", res)
+            print(" →", res)
 
 
 if __name__ == "__main__":

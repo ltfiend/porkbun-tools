@@ -12,5 +12,6 @@
   "catalog_zone": "catalog.example",
   "catalog_server": "192.168.1.1",
   "catalog_update_keyname": "<keyname>",
-  "catalog_update_key": "<updatekey>"
+  "catalog_update_key": "<updatekey>",
+  "digest_type": 2
 }

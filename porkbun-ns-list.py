@@ -95,7 +95,7 @@ def main():
         description="Summary table of NS/DS/DNSKEY sync status with progress counter"
     )
     parser.add_argument(
-        "-c", "--config", default="config.json", help="Path to config file"
+        "-c", "--config", default="porkbun-tools.json", help="Path to config file"
     )
     parser.add_argument("-d", "--domain", help="work on this domain")
     args = parser.parse_args()
