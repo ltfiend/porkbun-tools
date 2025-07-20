@@ -114,7 +114,9 @@ def main():
     for entry in domains:
         count += 1
         # Progress counter
-        print(f"Processed {count} domains...", file=sys.stderr)
+        print(
+            f"Processing entry {count} of {len(domains)}...", end="\r", file=sys.stderr
+        )
 
         domain = entry.get("domain")
         # Nameservers
