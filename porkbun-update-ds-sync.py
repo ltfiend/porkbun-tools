@@ -35,7 +35,7 @@ def load_config(path="porkbun-tools.json"):
 # ------------------------
 def get_dnskey(domain, server):
     name = dns.name.from_text(domain)
-    resp = dns.query.udp(
+    resp = dns.query.tcp(
         dns.message.make_query(name, dns.rdatatype.DNSKEY), server, timeout=3
     )
     return [
