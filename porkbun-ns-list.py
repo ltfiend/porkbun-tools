@@ -16,9 +16,11 @@ import dns.dnssec
 import socket
 import base64
 import sys
+import os
 
 # Base API URL
 BASE_URL = "https://api.porkbun.com/api/json/v3"
+HOME = os.path.expanduser("~")
 
 
 def load_config(path):
@@ -95,7 +97,10 @@ def main():
         description="Summary table of NS/DS/DNSKEY sync status with progress counter"
     )
     parser.add_argument(
-        "-c", "--config", default="porkbun-tools.json", help="Path to config file"
+        "-c",
+        "--config",
+        default=os.path.join(HOME, ".porkbun-tools.json"),
+        help="Path to config file"
     )
     parser.add_argument("-d", "--domain", help="work on this domain")
     args = parser.parse_args()
@@ -166,9 +171,17 @@ def main():
     fmt = "  ".join(f"{{:{w}}}" for w in col_widths)
     print(fmt.format(*headers))
     print("  ".join("-" * w for w in col_widths))
-    for row in rows:
-        print(fmt.format(*row))
-
+    for i, row in enumerate(rows):
+        line = fmt.format(*row)
+        # Check if any field in the row is the ✗ status.
+        if "✗" in row:
+            # Apply light red background (101) and black text (30)
+            print("\033[101m\033[30m" + line + "\033[0m")
+        elif i % 2 == 1:
+            # Apply dark gray background (100) and white text (30)
+            print("\033[100m" + line + "\033[0m")
+        else:
+            print(line)
 
 if __name__ == "__main__":
     main()
