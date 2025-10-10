@@ -17,6 +17,7 @@ import socket
 import base64
 import sys
 import os
+import re
 
 # Base API URL
 BASE_URL = "https://api.porkbun.com/api/json/v3"
@@ -171,12 +172,18 @@ def main():
     fmt = "  ".join(f"{{:{w}}}" for w in col_widths)
     print(fmt.format(*headers))
     print("  ".join("-" * w for w in col_widths))
+
+    doubleds = re.compile(r"\s+\d+,\d+\s+")
+    doubleksk = re.compile(r"KSK\d+,\d+;")
+
     for i, row in enumerate(rows):
         line = fmt.format(*row)
         # Check if any field in the row is the ✗ status.
         if "✗" in row:
             # Apply light red background (101) and black text (30)
             print("\033[101m\033[30m" + line + "\033[0m")
+        elif doubleds.search(line) or doubleksk.search(line):
+            print("\033[104m\033[30m" + line + "\033[0m")
         elif i % 2 == 1:
             # Apply dark gray background (100) and white text (30)
             print("\033[100m" + line + "\033[0m")
