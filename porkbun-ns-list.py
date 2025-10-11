@@ -182,11 +182,12 @@ def main():
         if "✗" in row:
             # Apply light red background (101) and black text (30)
             print("\033[101m\033[30m" + line + "\033[0m")
+            # Apply blue background (104) and black text (30)
         elif doubleds.search(line) or doubleksk.search(line):
             print("\033[104m\033[30m" + line + "\033[0m")
         elif i % 2 == 1:
-            # Apply dark gray background (100) and white text (30)
-            print("\033[100m" + line + "\033[0m")
+            # Apply dark gray background (100) and black text (30)
+            print("\033[100m\033[30m" + line + "\033[0m")
         else:
             print(line)
 
