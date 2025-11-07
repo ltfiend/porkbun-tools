@@ -9,15 +9,25 @@ import requests
 import logging
 import syslog
 import argparse
+import os
 
 # ------------------------
 # CLI Args
 # ------------------------
+HOME = os.path.expanduser("~")
+
 parser = argparse.ArgumentParser(
     description="Sync DS records for one or more domains via Porkbun API"
 )
 parser.add_argument(
-    "domains", nargs="+", help="Domain name(s) to synchronize (e.g. example.com)"
+    "-c", "--config",
+    default=os.path.join(HOME, ".porkbun-tools.json"),
+    help="Path to config file"
+)
+parser.add_argument(
+    "-d", "--domains",
+    nargs='+',
+    help="Domain name(s) to synchronize (e.g. example.com example.org)"
 )
 args = parser.parse_args()
 
@@ -25,7 +35,7 @@ args = parser.parse_args()
 # ------------------------
 # Configuration
 # ------------------------
-def load_config(path="porkbun-tools.json"):
+def load_config(path):
     with open(path) as f:
         return json.load(f)
 
@@ -132,7 +142,8 @@ def main():
     logging.basicConfig(level=logging.INFO)
     syslog.openlog("dnssec-sync", syslog.LOG_PID, syslog.LOG_DAEMON)
 
-    cfg = load_config()
+    cfg = load_config(args.config)
+
     server = cfg["dns_server"]
     ak = cfg["api_key"]
     sk = cfg["secret_api_key"]
