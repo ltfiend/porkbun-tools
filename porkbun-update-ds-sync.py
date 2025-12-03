@@ -1,28 +1,24 @@
-import json
 import dns.query
 import dns.message
 import dns.rdatatype
 import dns.name
 import dns.dnssec
 import dns.rdata
-import requests
 import logging
 import syslog
 import argparse
-import os
+
+from porkbun_common import load_config, get_ds_records, create_ds_record, delete_ds_record
 
 # ------------------------
 # CLI Args
 # ------------------------
-HOME = os.path.expanduser("~")
-
 parser = argparse.ArgumentParser(
     description="Sync DS records for one or more domains via Porkbun API"
 )
 parser.add_argument(
     "-c", "--config",
-    default=os.path.join(HOME, ".porkbun-tools.json"),
-    help="Path to config file"
+    help="Path to config file (default: ~/.porkbun-tools.json)"
 )
 parser.add_argument(
     "-d", "--domains",
@@ -30,14 +26,6 @@ parser.add_argument(
     help="Domain name(s) to synchronize (e.g. example.com example.org)"
 )
 args = parser.parse_args()
-
-
-# ------------------------
-# Configuration
-# ------------------------
-def load_config(path):
-    with open(path) as f:
-        return json.load(f)
 
 
 # ------------------------
@@ -71,47 +59,18 @@ def convert_dnskey(domain, dnskeys, digest_type=2):
 # Porkbun API Calls
 # ------------------------
 def get_existing_ds_records(domain, api_key, api_secret):
-    url = f"https://api.porkbun.com/api/json/v3/dns/getDnssecRecords/{domain}"
-    payload = {"apikey": api_key, "secretapikey": api_secret}
-    r = requests.post(url, json=payload)
-    data = r.json()
-    if data.get("status") != "SUCCESS":
-        print("❌ Error fetching DS records:", data)
-        syslog.syslog(syslog.LOG_ERR, f"DNSSEC sync error: {data}")
+    """Get DS records from Porkbun and format with IDs."""
+    try:
+        records_dict = get_ds_records(api_key, api_secret, domain)
+        records = []
+        for record_id, record_data in records_dict.items():
+            record_data["id"] = record_id
+            records.append(record_data)
+        return records
+    except RuntimeError as e:
+        print(f"❌ Error fetching DS records: {e}")
+        syslog.syslog(syslog.LOG_ERR, f"DNSSEC sync error: {e}")
         return []
-    records_dict = data.get("records", {})
-    if not isinstance(records_dict, dict):
-        print("❌ Unexpected format for records:", records_dict)
-        syslog.syslog(
-            syslog.LOG_ERR, f"DNSSEC sync error: Unexpected format: {records_dict}"
-        )
-        return []
-    records = []
-    for record_id, record_data in records_dict.items():
-        record_data["id"] = record_id
-        records.append(record_data)
-    return records
-
-
-def create_dnssec_record(domain, api_key, api_secret, ds):
-    url = f"https://api.porkbun.com/api/json/v3/dns/createDnssecRecord/{domain}"
-    payload = {
-        "apikey": api_key,
-        "secretapikey": api_secret,
-        "keyTag": str(ds.key_tag),
-        "alg": str(ds.algorithm),
-        "digestType": str(ds.digest_type),
-        "digest": ds.digest.hex().upper(),
-    }
-    r = requests.post(url, json=payload)
-    return r.json()
-
-
-def delete_ds_record(domain, api_key, api_secret, record_id):
-    url = f"https://api.porkbun.com/api/json/v3/dns/deleteDnssecRecord/{domain}/{record_id}"
-    payload = {"apikey": api_key, "secretapikey": api_secret}
-    r = requests.post(url, json=payload)
-    return r.json()
 
 
 # ------------------------
@@ -174,8 +133,16 @@ def main():
                 msg = f"[+] Adding DS {t}"
                 print(msg)
                 syslog.syslog(syslog.LOG_INFO, msg)
-                res = create_dnssec_record(domain, ak, sk, ds)
-                print(" →", res)
+                try:
+                    res = create_ds_record(
+                        ak, sk, domain,
+                        ds.key_tag, ds.algorithm, ds.digest_type,
+                        ds.digest.hex().upper()
+                    )
+                    print(" →", res)
+                except RuntimeError as e:
+                    print(f" → ❌ Error: {e}")
+                    syslog.syslog(syslog.LOG_ERR, f"Failed to create DS: {e}")
             else:
                 msg = f"[=] DS {t} already in sync."
                 print(msg)
@@ -187,8 +154,12 @@ def main():
                 msg = f"[-] Deleting stale DS {t}"
                 print(msg)
                 syslog.syslog(syslog.LOG_INFO, msg)
-                res = delete_ds_record(domain, ak, sk, record_id)
-                print(" →", res)
+                try:
+                    res = delete_ds_record(ak, sk, domain, record_id)
+                    print(" →", res)
+                except RuntimeError as e:
+                    print(f" → ❌ Error: {e}")
+                    syslog.syslog(syslog.LOG_ERR, f"Failed to delete DS: {e}")
 
 
 if __name__ == "__main__":

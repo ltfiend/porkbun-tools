@@ -1,25 +1,13 @@
 import sys
-import os
-import json
 import subprocess
-import requests
 import dns.resolver
 import argparse
 from pathlib import Path
 
-CONFIG_FILE = "porkbun-tools.json"
+from porkbun_common import load_config, get_nameservers, update_nameservers
+
 ZONE_DIR = Path("zones")
 NAMED_CONF_OUTPUT = Path("zone_config") / "{domain}.conf"
-API_BASE_URL = "https://api.porkbun.com/api/json/v3"
-
-
-def load_config(config_file):
-    try:
-        with open(config_file, "r") as f:
-            return json.load(f)
-    except Exception as e:
-        print(f"Error loading config: {e}")
-        sys.exit(1)
 
 
 def confirm_zone_exists(domain, dns_server):
@@ -36,48 +24,29 @@ def confirm_zone_exists(domain, dns_server):
 
 
 def get_current_porkbun_nameservers(domain, config):
-    endpoint = f"{API_BASE_URL}/domain/getNs/{domain}"
-    payload = {"apikey": config["api_key"], "secretapikey": config["secret_api_key"]}
-
+    """Display current nameservers from Porkbun."""
     try:
-        response = requests.post(endpoint, json=payload)
-        print(f"📥 Porkbun GET NS response status: {response.status_code}")
-        print(f"📥 Porkbun GET NS raw response: {response.text}")
-        response.raise_for_status()
-        data = response.json()
-        print(f"🔍 Current nameservers at Porkbun: {data.get('ns', [])}")
-    except requests.exceptions.RequestException as e:
+        ns = get_nameservers(config["api_key"], config["secret_api_key"], domain)
+        print(f"🔍 Current nameservers at Porkbun: {ns}")
+    except RuntimeError as e:
         print(f"❌ Porkbun GET NS request failed: {e}")
-    except json.JSONDecodeError:
-        print("❌ Failed to parse Porkbun GET NS response as JSON")
-        print(f"🔍 Raw response was: {response.text}")
 
 
 def update_porkbun_nameservers(domain, config):
+    """Update nameservers at Porkbun."""
     get_current_porkbun_nameservers(domain, config)
 
-    endpoint = f"{API_BASE_URL}/domain/updateNs/{domain}"
-    payload = {
-        "apikey": config["api_key"],
-        "secretapikey": config["secret_api_key"],
-        "ns": config["name_servers"],
-    }
-
     try:
-        response = requests.post(endpoint, json=payload)
-        print(f"📡 Porkbun UPDATE NS response status: {response.status_code}")
-        print(f"📡 Porkbun UPDATE NS raw response: {response.text}")
-        response.raise_for_status()
-        data = response.json()
-        if data.get("status") == "SUCCESS":
-            print(f"✅ Porkbun updated nameservers for {domain}")
-        else:
-            print(f"❌ Porkbun API error: {data}")
-    except requests.exceptions.RequestException as e:
+        result = update_nameservers(
+            config["api_key"],
+            config["secret_api_key"],
+            domain,
+            config["name_servers"]
+        )
+        print(f"✅ Porkbun updated nameservers for {domain}")
+        print(f"📡 Response: {result}")
+    except RuntimeError as e:
         print(f"❌ Porkbun UPDATE NS request failed: {e}")
-    except json.JSONDecodeError:
-        print("❌ Failed to parse Porkbun UPDATE NS response as JSON")
-        print(f"🔍 Raw response was: {response.text}")
 
 
 def load_zone_template(domain, config):
@@ -94,9 +63,6 @@ def load_zone_template(domain, config):
         with open(template_path, "r") as f:
             template = string.Template(f.read())
             return template.safe_substitute(domain=domain)
-    except Exception as e:
-        print(f"❌ Failed to read zone template file {template_path}: {e}")
-        sys.exit(1)
     except Exception as e:
         print(f"❌ Failed to read zone template file {template_path}: {e}")
         sys.exit(1)
@@ -218,8 +184,7 @@ def main():
         "--config",
         dest="config",
         metavar="FILE",
-        help="Path to an alternate configuration file",
-        default="porkbun-ns-maint.json",
+        help="Path to configuration file (default: ~/.porkbun-tools.json)",
     )
     parser.add_argument(
         "-d",
