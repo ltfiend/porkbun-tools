@@ -1,0 +1,8 @@
+# Porkbun Tools Dependencies
+# Install with: pip install -r requirements.txt
+
+# HTTP requests for Porkbun API
+requests>=2.31.0
+
+# DNS operations and DNSSEC
+dnspython>=2.4.0

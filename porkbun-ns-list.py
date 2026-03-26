@@ -9,60 +9,14 @@ Includes a progress counter to show domains processed in real-time.
 """
 
 import argparse
-import json
-import requests
 import dns.resolver
 import dns.dnssec
 import socket
 import base64
 import sys
-import os
 import re
 
-# Base API URL
-BASE_URL = "https://api.porkbun.com/api/json/v3"
-HOME = os.path.expanduser("~")
-
-
-def load_config(path):
-    with open(path) as f:
-        return json.load(f)
-
-
-def list_domains(apikey, secretapikey, start=0):
-    url = f"{BASE_URL}/domain/listAll"
-    payload = {
-        "apikey": apikey,
-        "secretapikey": secretapikey,
-        "start": str(start),
-        "includeLabels": "no",
-    }
-    resp = requests.post(url, json=payload)
-    data = resp.json()
-    if data.get("status") != "SUCCESS":
-        raise RuntimeError(f"Error listing domains: {data.get('message')}")
-    return data.get("domains", [])
-
-
-def get_nameservers(apikey, secretapikey, domain):
-    url = f"{BASE_URL}/domain/getNs/{domain}"
-    payload = {"apikey": apikey, "secretapikey": secretapikey}
-    resp = requests.post(url, json=payload)
-    data = resp.json()
-    if data.get("status") != "SUCCESS":
-        raise RuntimeError(f"Error getting NS for {domain}: {data.get('message')}")
-    return data.get("ns", [])
-
-
-def get_ds_records(apikey, secretapikey, domain):
-    url = f"{BASE_URL}/dns/getDnssecRecords/{domain}"
-    payload = {"apikey": apikey, "secretapikey": secretapikey}
-    resp = requests.post(url, json=payload)
-    data = resp.json()
-    if data.get("status") != "SUCCESS":
-        raise RuntimeError(f"Error getting DS for {domain}: {data.get('message')}")
-    records = data.get("records")
-    return records if isinstance(records, dict) else {}
+from porkbun_common import load_config, list_domains, get_nameservers, get_ds_records
 
 
 def query_dnskey(domain, ns_list):
@@ -100,8 +54,7 @@ def main():
     parser.add_argument(
         "-c",
         "--config",
-        default=os.path.join(HOME, ".porkbun-tools.json"),
-        help="Path to config file"
+        help="Path to config file (default: ~/.porkbun-tools.json)"
     )
     parser.add_argument("-d", "--domain", help="work on this domain")
     args = parser.parse_args()
