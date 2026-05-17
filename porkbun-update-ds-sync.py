@@ -4,6 +4,7 @@ import dns.rdatatype
 import dns.name
 import dns.dnssec
 import dns.rdata
+import base64
 import logging
 import syslog
 import argparse
@@ -24,6 +25,13 @@ parser.add_argument(
     "-d", "--domains",
     nargs='+',
     help="Domain name(s) to synchronize (e.g. example.com example.org)"
+)
+parser.add_argument(
+    "--with-dnskey",
+    action="store_true",
+    help="Also submit the DNSKEY key data (keyData) alongside the DS "
+         "record. Some registries (e.g. .run / Google Registry) reject "
+         "DS-only submissions with HTTP 400 and require the DNSKEY."
 )
 args = parser.parse_args()
 
@@ -51,7 +59,7 @@ def convert_dnskey(domain, dnskeys, digest_type=2):
         r = dns.rdata.from_text(dns.rdataclass.IN, dns.rdatatype.DNSKEY, txt)
         if r.flags == 257:  # Only include KSK
             ds = dns.dnssec.make_ds(name, r, digest_type)
-            ds_data.append(ds)
+            ds_data.append((ds, r))  # keep the source DNSKEY for keyData
     return ds_data
 
 
@@ -120,24 +128,34 @@ def main():
 
         print("[+] Converting to DS (KSKs only)...")
         ds_local = convert_dnskey(domain, keys, dt)
-        local_tuples = {ds_to_tuple(d) for d in ds_local}
+        local_tuples = {ds_to_tuple(ds) for ds, _ in ds_local}
 
         print("[+] Fetching Porkbun DS records...")
         pb_records = get_existing_ds_records(domain, ak, sk)
         remote_tuples = {record_to_tuple(r): r["id"] for r in pb_records}
 
         # ADD missing or confirm in sync
-        for ds in ds_local:
+        for ds, dnskey in ds_local:
             t = ds_to_tuple(ds)
             if t not in remote_tuples:
                 msg = f"[+] Adding DS {t}"
                 print(msg)
                 syslog.syslog(syslog.LOG_INFO, msg)
                 try:
+                    extra = {}
+                    if args.with_dnskey:
+                        extra = {
+                            "key_data_flags": dnskey.flags,
+                            "key_data_protocol": dnskey.protocol,
+                            "key_data_algo": dnskey.algorithm,
+                            "key_data_pubkey": base64.b64encode(dnskey.key).decode(),
+                        }
+                        print(f"    [+] Including DNSKEY data (flags={dnskey.flags})")
                     res = create_ds_record(
                         ak, sk, domain,
                         ds.key_tag, ds.algorithm, ds.digest_type,
-                        ds.digest.hex().upper()
+                        ds.digest.hex().upper(),
+                        **extra
                     )
                     print(" →", res)
                 except RuntimeError as e:

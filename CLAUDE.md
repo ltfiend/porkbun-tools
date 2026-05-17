@@ -38,6 +38,14 @@ Synchronizes DS records from local BIND9 DNSKEYs to Porkbun registrar. Uses TCP 
 python3 porkbun-update-ds-sync.py -c ~/.porkbun-tools.json -d example.com example.org
 ```
 
+Add `--with-dnskey` to also submit the DNSKEY key data (keyData) with each DS
+record. Some registries (e.g. `.run` / Google Registry) reject DS-only
+submissions with HTTP 400 and require the full DNSKEY:
+
+```bash
+python3 porkbun-update-ds-sync.py -c ~/.porkbun-tools.json --with-dnskey -d glenda.run
+```
+
 **Key functions:**
 - `get_dnskey()` - Queries DNSKEY records via TCP (porkbun-update-ds-sync.py:46)
 - `convert_dnskey()` - Converts KSKs to DS records with specified digest type (porkbun-update-ds-sync.py:59)

@@ -128,7 +128,9 @@ def get_ds_records(apikey, secretapikey, domain):
     return records if isinstance(records, dict) else {}
 
 
-def create_ds_record(apikey, secretapikey, domain, key_tag, algorithm, digest_type, digest):
+def create_ds_record(apikey, secretapikey, domain, key_tag, algorithm, digest_type, digest,
+                      key_data_flags=None, key_data_protocol=None,
+                      key_data_algo=None, key_data_pubkey=None):
     """
     Create a DNSSEC DS record at Porkbun.
 
@@ -140,19 +142,32 @@ def create_ds_record(apikey, secretapikey, domain, key_tag, algorithm, digest_ty
         algorithm: DNSSEC algorithm (int or str)
         digest_type: Digest type (int or str)
         digest: Digest hex string
+        key_data_flags: DNSKEY flags (optional; some registries require keyData)
+        key_data_protocol: DNSKEY protocol (optional)
+        key_data_algo: DNSKEY algorithm (optional)
+        key_data_pubkey: DNSKEY public key, base64 (optional)
 
     Returns:
         dict: API response data
+
+    Notes:
+        The keyData fields are submitted only when all four are provided.
+        Some registries (e.g. .run / Google Registry) reject DS-only
+        submissions with HTTP 400 and require the full DNSKEY key data.
     """
-    return api_call(
-        f"dns/createDnssecRecord/{domain}",
-        apikey,
-        secretapikey,
-        keyTag=str(key_tag),
-        alg=str(algorithm),
-        digestType=str(digest_type),
-        digest=digest
-    )
+    params = {
+        "keyTag": str(key_tag),
+        "alg": str(algorithm),
+        "digestType": str(digest_type),
+        "digest": digest,
+    }
+    if None not in (key_data_flags, key_data_protocol, key_data_algo, key_data_pubkey):
+        params["keyDataFlags"] = str(key_data_flags)
+        params["keyDataProtocol"] = str(key_data_protocol)
+        params["keyDataAlgo"] = str(key_data_algo)
+        params["keyDataPubKey"] = key_data_pubkey
+
+    return api_call(f"dns/createDnssecRecord/{domain}", apikey, secretapikey, **params)
 
 
 def delete_ds_record(apikey, secretapikey, domain, record_id):
